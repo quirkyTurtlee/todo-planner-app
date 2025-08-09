@@ -11,14 +11,11 @@
         <button @click="showArchive = true" class="btn btn-archive" title="View Archive">
           📁
         </button>
+        <button @click="showOverview = true" class="btn btn-overview" title="View All Pages">
+          <font-awesome-icon icon="th-large" />
+        </button>
       </div>
-      <BottomNavigation
-        :pages="pages"
-        :current-page="currentPage"
-        @select-page="selectPage"
-        @delete-page="deletePage"
-        @add-page="addNewPage"
-      />
+
 
       <TaskCanvas
         v-if="currentPage"
@@ -45,15 +42,46 @@
       </div>
     </div>
     
-    <!-- Bottom Navigation -->
-    <BottomNavigation
+    <!-- Page Switcher -->
+    <PageSwitcher
       :pages="pages"
       :current-page="currentPage"
-      :tasks="tasks"
       @select-page="selectPage"
-      @delete-page="deletePage"
-      @add-page="addNewPage"
     />
+    
+    <!-- Page Overview Modal -->
+    <div v-if="showOverview" class="page-overview-backdrop" @click="showOverview = false">
+      <div class="page-overview" @click.stop>
+        <div class="overview-header">
+          <h3>All Pages</h3>
+          <button @click="showOverview = false" class="close-btn">
+            <font-awesome-icon icon="times" />
+          </button>
+        </div>
+        <div class="overview-content">
+          <div class="page-grid">
+            <div
+              v-for="(page, index) in pages"
+              :key="page.id"
+              class="page-card"
+              :class="{ active: currentPage?.id === page.id }"
+              @click="selectPageAndClose(page)"
+            >
+              <div class="page-card-header">
+                <span class="page-card-number">{{ index + 1 }}</span>
+                <button @click.stop="deletePage(page.id)" class="delete-btn">
+                  <font-awesome-icon icon="times" />
+                </button>
+              </div>
+              <div class="page-card-title">{{ page.title || 'Untitled Page' }}</div>
+              <div class="page-card-preview">
+                <span class="task-count">{{ getTaskCount(page.id) }} tasks</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     
     <!-- Archive Modal -->
     <Archive
@@ -71,13 +99,15 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
-import BottomNavigation from './components/BottomNavigation.vue'
+import PageSwitcher from './components/PageSwitcher.vue'
 import TaskCanvas from './components/TaskCanvas.vue'
 import Archive from './components/Archive.vue'
+import BottomNavigation from './components/BottomNavigation.vue'
 import { getPriorityColor } from './utils/taskUtils'
 import storage from './utils/storage'
 
 const pages = ref([])
+const showOverview = ref(false)
 const currentPage = ref(null)
 const tasks = ref([])
 const canvasNotes = ref([])
@@ -165,6 +195,7 @@ const getCanvasNotesForCurrentPage = () => {
 
 const selectTask = (task) => {
   selectedTask.value = task
+  // Note: TaskCanvas component handles finishing note editing internally
 }
 
 const deselectTask = () => {
@@ -298,6 +329,16 @@ const clearArchive = () => {
     storage.saveArchivedNotes(archivedNotes.value)
   }
 }
+
+// Page overview helper methods
+const selectPageAndClose = (page) => {
+  selectPage(page)
+  showOverview.value = false
+}
+
+const getTaskCount = (pageId) => {
+  return tasks.value.filter(task => task.pageId === pageId).length
+}
 </script>
 
 <style scoped>
@@ -368,6 +409,16 @@ const clearArchive = () => {
   transform: scale(1.1);
 }
 
+.btn-overview {
+  background: #17a2b8;
+  color: white;
+}
+
+.btn-overview:hover {
+  background: #138496;
+  transform: scale(1.1);
+}
+
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -377,7 +428,7 @@ const clearArchive = () => {
   flex: 1;
   display: flex;
   overflow: hidden;
-  padding-bottom: 120px; /* Space for bottom navigation */
+  padding-bottom: 20px; /* Minimal space for page switcher */
 }
 
 .empty-state {
@@ -399,12 +450,12 @@ const clearArchive = () => {
 @media (max-width: 768px) {
   .main-container {
     flex-direction: column;
-    padding-bottom: 100px; /* Adjusted for mobile bottom nav */
+    padding-bottom: 20px; /* Minimal space for page switcher */
   }
   
   .floating-controls {
     position: fixed;
-    bottom: 120px; /* Above bottom navigation */
+    bottom: 80px; /* Above page switcher */
     right: 20px;
     top: auto;
     flex-direction: column;
@@ -419,11 +470,11 @@ const clearArchive = () => {
 
 @media (max-width: 480px) {
   .main-container {
-    padding-bottom: 80px; /* Adjusted for smaller mobile bottom nav */
+    padding-bottom: 15px; /* Minimal space for smaller page switcher */
   }
   
   .floating-controls {
-    bottom: 100px; /* Above bottom navigation */
+    bottom: 70px; /* Above page switcher */
     right: 15px;
   }
   
@@ -432,5 +483,150 @@ const clearArchive = () => {
     height: 45px;
     font-size: 1.2rem;
   }
+}
+
+/* Page Overview Modal Styles */
+.page-overview-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.page-overview {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  max-width: 800px;
+  width: 100%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #dee2e6;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.overview-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.5rem;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #6c757d;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.close-btn:hover {
+  background: #f8f9fa;
+  color: #333;
+}
+
+.overview-content {
+  padding: 2rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.page-card {
+  background: white;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.page-card:hover {
+  border-color: #007bff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,123,255,0.2);
+}
+
+.page-card.active {
+  border-color: #007bff;
+  background: #f0f8ff;
+}
+
+.page-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.page-card-number {
+  background: #007bff;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.delete-btn:hover {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.page-card-title {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-card-preview {
+  color: #6c757d;
+  font-size: 0.9rem;
+}
+
+.task-count {
+  font-style: italic;
 }
 </style>

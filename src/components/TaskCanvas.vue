@@ -1,6 +1,6 @@
 <template>
   <div class="workspace">
-    <div class="page-canvas" @click="$emit('deselect-task')" @dblclick="handleCanvasDoubleClick"
+    <div class="page-canvas" @click="handleCanvasClick" @dblclick="handleCanvasDoubleClick"
     @touchend="handleCanvasTouchEnd">
       <TaskCard
         v-for="task in tasks"
@@ -37,7 +37,7 @@
         </div>
         <input
           v-else
-          ref="noteInput"
+          :ref="el => { if (el && editingNoteId === note.id && noteInput) noteInput.value = el }"
           v-model="editingText"
           class="note-input"
           @blur="finishEditing"
@@ -55,7 +55,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import TaskCard from './TaskCard.vue'
 
 const props = defineProps({
@@ -97,6 +97,23 @@ const editingNoteId = ref(null)
 const editingText = ref('')
 const noteInput = ref(null)
 
+// Watch for task selection to finish note editing
+watch(() => props.selectedTask, (newTask) => {
+  if (newTask && editingNoteId.value) {
+    finishEditing()
+  }
+})
+
+const handleCanvasClick = () => {
+  // Finish editing any note when clicking on empty space
+  if (editingNoteId.value) {
+    finishEditing()
+  }
+  // Deselect task and note
+  emit('deselect-task')
+  selectedNoteId.value = null
+}
+
 const handleCanvasDoubleClick = (event) => {
   const rect = event.currentTarget.getBoundingClientRect()
   const x = event.clientX - rect.left
@@ -118,6 +135,10 @@ const handleCanvasDoubleClick = (event) => {
 }
 
 const selectNote = (noteId) => {
+  // Finish editing current note if any
+  if (editingNoteId.value && editingNoteId.value !== noteId) {
+    finishEditing()
+  }
   selectedNoteId.value = noteId
 }
 
