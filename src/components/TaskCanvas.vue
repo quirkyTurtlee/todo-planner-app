@@ -24,6 +24,7 @@
         :style="{ left: note.x + 'px', top: note.y + 'px' }"
         @click.stop="selectNote(note.id)"
         @dblclick.stop="startEditingNote(note.id)"
+        @mousedown="startDragNote($event, note)"
       >
         <div v-if="editingNoteId !== note.id" class="note-display">
           {{ note.text }}
@@ -88,7 +89,8 @@ const emit = defineEmits([
   'rotate-task',
   'add-canvas-note',
   'update-canvas-note',
-  'delete-canvas-note'
+  'delete-canvas-note',
+  'start-drag-note'
 ])
 
 // Canvas notes functionality
@@ -168,6 +170,22 @@ const finishEditing = () => {
 const cancelEditing = () => {
   editingNoteId.value = null
   editingText.value = ''
+}
+
+const startDragNote = (event, note) => {
+  // Don't start drag if we're editing this note
+  if (editingNoteId.value === note.id) {
+    return
+  }
+  
+  // Prevent text selection during drag
+  event.preventDefault()
+  
+  // Select the note
+  selectedNoteId.value = note.id
+  
+  // Emit the drag start event
+  emit('start-drag-note', event, note)
 }
 
 // Touch handling for mobile devices
@@ -266,10 +284,11 @@ const handleCanvasTouchEnd = (event) => {
   border-radius: 4px;
   padding: 8px;
   font-size: 14px;
-  cursor: pointer;
+  cursor: move;
   position: relative;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: background-color 0.2s;
+  user-select: none;
 }
 
 .note-display:hover {

@@ -2,7 +2,7 @@
   <div class="archive-overlay" @click="$emit('close')">
     <div class="archive-modal" @click.stop>
       <div class="archive-header">
-        <h2>📁 Archived Notes</h2>
+        <h2>📁 Archived Items</h2>
         <div class="archive-actions">
           <button 
             v-if="archivedNotes.length > 0" 
@@ -19,8 +19,8 @@
       
       <div class="archive-content">
         <div v-if="archivedNotes.length === 0" class="empty-archive">
-          <p>📭 No archived notes yet</p>
-          <small>Deleted notes will appear here</small>
+          <p>📭 No archived items yet</p>
+          <small>Deleted notes and tasks will appear here</small>
         </div>
         
         <div v-else class="archived-notes-list">
@@ -30,7 +30,13 @@
             class="archived-note"
           >
             <div class="note-content">
-              <div class="note-text">{{ note.text || 'Empty note' }}</div>
+              <div class="item-header">
+                <span class="item-type">{{ note.type === 'task' ? '📝 Task' : '📄 Note' }}</span>
+                <span v-if="note.priority && note.type === 'task'" class="priority-badge" :class="`priority-${note.priority}`">
+                  {{ getPriorityLabel(note.priority) }}
+                </span>
+              </div>
+              <div class="note-text">{{ getItemText(note) }}</div>
               <div class="note-meta">
                 <span class="page-info">Page: {{ getPageTitle(note.pageId) }}</span>
                 <span class="archived-date">Archived: {{ formatDate(note.archivedAt) }}</span>
@@ -41,7 +47,7 @@
               <button 
                 @click="$emit('restore-note', note.id)" 
                 class="btn btn-restore"
-                title="Restore note"
+                :title="`Restore ${note.type}`"
               >
                 ↩️ Restore
               </button>
@@ -61,6 +67,8 @@
 </template>
 
 <script setup>
+import { PRIORITY_LABELS } from '../utils/constants.js'
+
 const props = defineProps({
   archivedNotes: {
     type: Array,
@@ -87,6 +95,17 @@ const getPageTitle = (pageId) => {
 const formatDate = (dateString) => {
   const date = new Date(dateString)
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+const getItemText = (item) => {
+  if (item.type === 'task') {
+    return item.text || 'Empty task'
+  }
+  return item.text || 'Empty note'
+}
+
+const getPriorityLabel = (priority) => {
+  return PRIORITY_LABELS[priority] || priority
 }
 </script>
 
@@ -177,6 +196,42 @@ const formatDate = (dateString) => {
   margin-bottom: 0.5rem;
   color: #333;
   word-break: break-word;
+}
+
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.item-type {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.priority-badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.priority-low {
+  background: #d4edda;
+  color: #155724;
+}
+
+.priority-medium {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.priority-high {
+  background: #f8d7da;
+  color: #721c24;
 }
 
 .note-meta {

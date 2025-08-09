@@ -51,7 +51,11 @@
 </template>
 
 <script setup>
-import { priorityLevels, priorityLabels, getPriorityBorderColor } from '../utils/taskUtils'
+import { getPriorityBorderColor } from '../utils/taskUtils'
+import { PRIORITY_LEVELS, PRIORITY_LABELS } from '../utils/constants'
+
+const priorityLevels = PRIORITY_LEVELS
+const priorityLabels = PRIORITY_LABELS
 
 const props = defineProps({
   task: {

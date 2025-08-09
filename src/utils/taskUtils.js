@@ -1,11 +1,7 @@
-export const priorityLevels = ['low', 'medium', 'high', 'urgent']
+import { PRIORITY_LEVELS, PRIORITY_LABELS } from './constants'
 
-export const priorityLabels = {
-  low: 'Low',
-  medium: 'Medium', 
-  high: 'High',
-  urgent: 'Urgent'
-}
+export const priorityLevels = PRIORITY_LEVELS
+export const priorityLabels = PRIORITY_LABELS
 
 export const getPriorityColor = (priority) => {
   const colors = {

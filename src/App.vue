@@ -34,6 +34,7 @@
         @add-canvas-note="addCanvasNote"
         @update-canvas-note="updateCanvasNote"
         @delete-canvas-note="deleteCanvasNote"
+        @start-drag-note="startDragNote"
       />
 
       <div v-else class="empty-state">
@@ -50,38 +51,15 @@
     />
     
     <!-- Page Overview Modal -->
-    <div v-if="showOverview" class="page-overview-backdrop" @click="showOverview = false">
-      <div class="page-overview" @click.stop>
-        <div class="overview-header">
-          <h3>All Pages</h3>
-          <button @click="showOverview = false" class="close-btn">
-            <font-awesome-icon icon="times" />
-          </button>
-        </div>
-        <div class="overview-content">
-          <div class="page-grid">
-            <div
-              v-for="(page, index) in pages"
-              :key="page.id"
-              class="page-card"
-              :class="{ active: currentPage?.id === page.id }"
-              @click="selectPageAndClose(page)"
-            >
-              <div class="page-card-header">
-                <span class="page-card-number">{{ index + 1 }}</span>
-                <button @click.stop="deletePage(page.id)" class="delete-btn">
-                  <font-awesome-icon icon="times" />
-                </button>
-              </div>
-              <div class="page-card-title">{{ page.title || 'Untitled Page' }}</div>
-              <div class="page-card-preview">
-                <span class="task-count">{{ getTaskCount(page.id) }} tasks</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <PageOverview
+      :show="showOverview"
+      :pages="pages"
+      :current-page="currentPage"
+      :tasks="tasks"
+      @close="showOverview = false"
+      @select-page="selectPage"
+      @delete-page="deletePage"
+    />
     
     <!-- Archive Modal -->
     <Archive
@@ -102,8 +80,10 @@ import { v4 as uuidv4 } from 'uuid'
 import PageSwitcher from './components/PageSwitcher.vue'
 import TaskCanvas from './components/TaskCanvas.vue'
 import Archive from './components/Archive.vue'
-import BottomNavigation from './components/BottomNavigation.vue'
+import PageOverview from './components/PageOverview.vue'
 import { getPriorityColor } from './utils/taskUtils'
+import { TASK_DEFAULTS } from './utils/constants'
+import { getTasksByPageId, getNotesByPageId, generateRandomPosition, generateRandomRotation, findById, updateById, removeById } from './utils/helpers'
 import storage from './utils/storage'
 
 const pages = ref([])
@@ -165,17 +145,18 @@ const selectPage = (page) => {
 const addNewTask = () => {
   if (!currentPage.value) return
   
+  const position = generateRandomPosition()
   const newTask = {
     id: uuidv4(),
     pageId: currentPage.value.id,
     content: '',
-    x: Math.random() * 300 + 50,
-    y: Math.random() * 200 + 50,
-    width: 200,
-    height: 100,
-    priority: 'medium',
-    color: getPriorityColor('medium'),
-    rotation: Math.random() * 10 - 5,
+    x: position.x,
+    y: position.y,
+    width: TASK_DEFAULTS.width,
+    height: TASK_DEFAULTS.height,
+    priority: TASK_DEFAULTS.priority,
+    color: getPriorityColor(TASK_DEFAULTS.priority),
+    rotation: generateRandomRotation(),
     createdAt: new Date().toISOString()
   }
   
@@ -184,13 +165,11 @@ const addNewTask = () => {
 }
 
 const getTasksForCurrentPage = () => {
-  if (!currentPage.value) return []
-  return tasks.value.filter(task => task.pageId === currentPage.value.id)
+  return getTasksByPageId(tasks.value, currentPage.value?.id)
 }
 
 const getCanvasNotesForCurrentPage = () => {
-  if (!currentPage.value) return []
-  return canvasNotes.value.filter(note => note.pageId === currentPage.value.id)
+  return getNotesByPageId(canvasNotes.value, currentPage.value?.id)
 }
 
 const selectTask = (task) => {
@@ -203,28 +182,56 @@ const deselectTask = () => {
 }
 
 const updateTaskContent = (taskId, content) => {
-  const task = tasks.value.find(t => t.id === taskId)
+  const task = findById(tasks.value, taskId)
   if (task) {
-    task.content = content
+    tasks.value = updateById(tasks.value, taskId, { content })
     storage.saveTasks(tasks.value)
   }
 }
 
 const setTaskPriority = (taskId, priority) => {
-  const task = tasks.value.find(t => t.id === taskId)
+  const task = findById(tasks.value, taskId)
   if (task) {
-    task.priority = priority
-    task.color = getPriorityColor(priority)
+    tasks.value = updateById(tasks.value, taskId, { 
+      priority, 
+      color: getPriorityColor(priority) 
+    })
     storage.saveTasks(tasks.value)
   }
 }
 
 const deleteTask = (taskId) => {
-  tasks.value = tasks.value.filter(t => t.id !== taskId)
-  if (selectedTask.value?.id === taskId) {
-    selectedTask.value = null
+  const taskToDelete = findById(tasks.value, taskId)
+  if (taskToDelete) {
+    // Check if task has meaningful content (not empty or just whitespace)
+    const hasContent = taskToDelete.content && taskToDelete.content.trim().length > 0
+    
+    if (hasContent) {
+      // Add timestamp when archived and convert task to note format
+      const archivedNote = {
+        id: taskToDelete.id,
+        pageId: taskToDelete.pageId,
+        text: taskToDelete.content,
+        x: taskToDelete.x,
+        y: taskToDelete.y,
+        priority: taskToDelete.priority,
+        color: taskToDelete.color,
+        rotation: taskToDelete.rotation,
+        createdAt: taskToDelete.createdAt,
+        archivedAt: new Date().toISOString(),
+        type: 'task' // Mark as archived task
+      }
+      archivedNotes.value.push(archivedNote)
+      storage.saveArchivedNotes(archivedNotes.value)
+    }
+    
+    // Remove from active tasks regardless of content
+    tasks.value = removeById(tasks.value, taskId)
+    if (selectedTask.value?.id === taskId) {
+      selectedTask.value = null
+    }
+    storage.saveTasks(tasks.value)
   }
-  storage.saveTasks(tasks.value)
 }
 
 const startDrag = (event, task) => {
@@ -267,6 +274,26 @@ const rotateTask = ({ taskId, rotation }) => {
   }
 }
 
+const startDragNote = (event, note) => {
+  const dragOffset = { x: 0, y: 0 }
+  dragOffset.x = event.clientX - note.x
+  dragOffset.y = event.clientY - note.y
+  
+  const handleMouseMove = (e) => {
+    note.x = e.clientX - dragOffset.x
+    note.y = e.clientY - dragOffset.y
+  }
+  
+  const handleMouseUp = () => {
+    storage.saveCanvasNotes(canvasNotes.value)
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
+  
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
+}
+
 // Canvas notes functions
 const addCanvasNote = (note) => {
   canvasNotes.value.push(note)
@@ -291,7 +318,8 @@ const deleteCanvasNote = (noteId) => {
       // Add timestamp when archived
       const archivedNote = {
         ...noteToArchive,
-        archivedAt: new Date().toISOString()
+        archivedAt: new Date().toISOString(),
+        type: 'note' // Mark as archived note
       }
       archivedNotes.value.push(archivedNote)
       storage.saveArchivedNotes(archivedNotes.value)
@@ -303,15 +331,37 @@ const deleteCanvasNote = (noteId) => {
   }
 }
 
-const restoreCanvasNote = (noteId) => {
-  const noteToRestore = archivedNotes.value.find(n => n.id === noteId)
-  if (noteToRestore) {
-    // Remove archived timestamp when restoring
-    const { archivedAt, ...restoredNote } = noteToRestore
-    canvasNotes.value.push(restoredNote)
-    archivedNotes.value = archivedNotes.value.filter(n => n.id !== noteId)
+const restoreCanvasNote = (itemId) => {
+  const itemToRestore = archivedNotes.value.find(n => n.id === itemId)
+  if (itemToRestore) {
+    // Remove archived timestamp and type when restoring
+    const { archivedAt, type, ...restoredItem } = itemToRestore
     
-    storage.saveCanvasNotes(canvasNotes.value)
+    if (type === 'task') {
+      // Restore as task - convert back from note format
+      const restoredTask = {
+        id: restoredItem.id,
+        pageId: restoredItem.pageId,
+        content: restoredItem.text,
+        x: restoredItem.x,
+        y: restoredItem.y,
+        width: TASK_DEFAULTS.width,
+        height: TASK_DEFAULTS.height,
+        priority: restoredItem.priority,
+        color: restoredItem.color,
+        rotation: restoredItem.rotation,
+        createdAt: restoredItem.createdAt
+      }
+      tasks.value.push(restoredTask)
+      storage.saveTasks(tasks.value)
+    } else {
+      // Restore as note
+      canvasNotes.value.push(restoredItem)
+      storage.saveCanvasNotes(canvasNotes.value)
+    }
+    
+    // Remove from archive
+    archivedNotes.value = archivedNotes.value.filter(n => n.id !== itemId)
     storage.saveArchivedNotes(archivedNotes.value)
   }
 }
@@ -330,15 +380,7 @@ const clearArchive = () => {
   }
 }
 
-// Page overview helper methods
-const selectPageAndClose = (page) => {
-  selectPage(page)
-  showOverview.value = false
-}
 
-const getTaskCount = (pageId) => {
-  return tasks.value.filter(task => task.pageId === pageId).length
-}
 </script>
 
 <style scoped>
@@ -428,7 +470,6 @@ const getTaskCount = (pageId) => {
   flex: 1;
   display: flex;
   overflow: hidden;
-  padding-bottom: 20px; /* Minimal space for page switcher */
 }
 
 .empty-state {
@@ -485,148 +526,5 @@ const getTaskCount = (pageId) => {
   }
 }
 
-/* Page Overview Modal Styles */
-.page-overview-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
 
-.page-overview {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-  max-width: 800px;
-  width: 100%;
-  max-height: 80vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.overview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem 2rem;
-  border-bottom: 1px solid #dee2e6;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-}
-
-.overview-header h3 {
-  margin: 0;
-  color: #333;
-  font-size: 1.5rem;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  color: #6c757d;
-  cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 50%;
-  transition: all 0.3s ease;
-}
-
-.close-btn:hover {
-  background: #f8f9fa;
-  color: #333;
-}
-
-.overview-content {
-  padding: 2rem;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.page-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1.5rem;
-}
-
-.page-card {
-  background: white;
-  border: 2px solid #dee2e6;
-  border-radius: 8px;
-  padding: 1rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.page-card:hover {
-  border-color: #007bff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,123,255,0.2);
-}
-
-.page-card.active {
-  border-color: #007bff;
-  background: #f0f8ff;
-}
-
-.page-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.page-card-number {
-  background: #007bff;
-  color: white;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8rem;
-  font-weight: bold;
-}
-
-.delete-btn {
-  background: none;
-  border: none;
-  color: #dc3545;
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 50%;
-  transition: all 0.3s ease;
-  font-size: 0.9rem;
-}
-
-.delete-btn:hover {
-  background: #f8d7da;
-  color: #721c24;
-}
-
-.page-card-title {
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 0.5rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.page-card-preview {
-  color: #6c757d;
-  font-size: 0.9rem;
-}
-
-.task-count {
-  font-style: italic;
-}
 </style>
